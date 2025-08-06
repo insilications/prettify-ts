@@ -1,0 +1,19 @@
+{
+	"files": [
+		{
+			"path": "packages/typescript-plugin/src/type-tree/index.ts",
+			"bookmarks": [
+				{
+					"line": 101,
+					"column": 17,
+					"label": ""
+				},
+				{
+					"line": 126,
+					"column": 13,
+					"label": ""
+				}
+			]
+		}
+	]
+}

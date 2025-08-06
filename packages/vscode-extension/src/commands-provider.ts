@@ -53,7 +53,8 @@ export function registerCommands(context: vscode.ExtensionContext): void {
       options,
     };
 
-    const cursorPosition = editor.selection.active;
+    const selection = editor.selection;
+    const cursorPosition = selection.active;
     const location = {
       file: editor.document.uri.fsPath,
       line: cursorPosition.line + 1,
@@ -71,12 +72,63 @@ export function registerCommands(context: vscode.ExtensionContext): void {
       return;
     }
 
-    const { typeTree, declaration } = prettifyResponse;
+    const { typeTree, span, syntaxKind, returnTypeString } = prettifyResponse;
 
     const typeString = stringifyTypeTree(typeTree, false);
     const prettyTypeString = prettyPrintTypeString(typeString, indentation);
 
-    await vscode.env.clipboard.writeText(declaration + prettyTypeString);
+    // Convert the character offsets from the TSServer response into VS Code Positions
+    const identifierStartPos = editor.document.positionAt(span.start);
+    const identifierEndPos = editor.document.positionAt(span.end);
+
+    const identifierRange = new vscode.Range(identifierStartPos, identifierEndPos);
+    const identifierEnd = identifierRange.end;
+
+    // Get the text after the identifier to check for existing type annotation or assignment
+    const currentLine = editor.document.lineAt(identifierEnd.line);
+    const textAfterIdentifier = currentLine.text.substring(identifierEnd.character);
+
+    // Check if there's already a type annotation (: Type) after the identifier
+    const hasExistingType = /^\s*:/.test(textAfterIdentifier);
+    if (hasExistingType) {
+      await vscode.window.showInformationMessage("Type annotation already exists");
+      return;
+    }
+
+    await editor.edit((editBuilder) => {
+      const typeAnnotation = `: ${prettyTypeString.trim()}`;
+
+      // Check for an assignment operator after the identifier
+      const assignmentMatch = textAfterIdentifier.match(/^(\s*)(=)/);
+
+      if (assignmentMatch) {
+        // Case 1: An assignment exists (e.g., `const x = 1`).
+        // We will REPLACE the whitespace between the identifier and the '='.
+
+        // The whitespace to replace starts right after the identifier.
+        const whitespaceStart = identifierEnd;
+
+        // The whitespace ends right before the '=', which is at a known offset.
+        const whitespaceEnd = new vscode.Position(
+          identifierEnd.line,
+          identifierEnd.character + assignmentMatch[1]!.length
+        );
+
+        const replacementRange = new vscode.Range(whitespaceStart, whitespaceEnd);
+
+        // Replace the whitespace with the type annotation, ensuring one space on each side.
+        editBuilder.replace(replacementRange, `${typeAnnotation} `);
+      } else {
+        // Case 2: No assignment (e.g., `let x;` or a function parameter).
+        // We can simply INSERT the type annotation.
+        editBuilder.insert(identifierEnd, typeAnnotation);
+      }
+    });
+
+    await vscode.env.clipboard.writeText(
+      `: ${prettyTypeString.trim()} - syntaxKind: ${syntaxKind} - returnType: ${returnTypeString ?? "N/A"}`
+    );
+    // await vscode.env.clipboard.writeText(`: ${prettyTypeString}`);
     await vscode.window.showInformationMessage("Type copied to clipboard");
   }
 

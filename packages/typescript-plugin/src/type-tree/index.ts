@@ -30,7 +30,7 @@ export function getTypeInfoAtPosition(
   sourceFile: ts.SourceFile,
   position: number,
   prettifyOptions: PrettifyOptions,
-  program: ts.Program,
+  program: ts.Program
 ): TypeInfo | undefined {
   try {
     typescript = typescriptContext;
@@ -61,6 +61,36 @@ export function getTypeInfoAtPosition(
 
     const name = symbol?.getName() ?? typeChecker.typeToString(type);
 
+    let identifierNode: ts.Node = node;
+    const nodeDeclaration = symbol.declarations?.[0];
+
+    // For variable/function/class declarations, the `name` property is the identifier node.
+    // This is more precise than the `node` at the cursor, especially if the cursor is on a keyword like `const`.
+    if (nodeDeclaration && "name" in nodeDeclaration && nodeDeclaration.name) {
+      identifierNode = nodeDeclaration.name as ts.Node;
+    }
+
+    let returnTypeString: string | undefined = undefined;
+    const functionLikeKinds = [typescript.SyntaxKind.FunctionDeclaration, typescript.SyntaxKind.MethodDeclaration];
+
+    if (functionLikeKinds.includes(syntaxKind)) {
+      // For a function, get its call signature
+      const signatures = type.getCallSignatures();
+      if (signatures.length > 0) {
+        // Get the return type from the first signature
+        const returnType = signatures[0]!.getReturnType();
+        // Convert only the return type to a string
+        returnTypeString = typeChecker.typeToString(returnType, node, typescript.TypeFormatFlags.NoTruncation);
+      }
+    }
+
+    const span = {
+      start: identifierNode.getStart(),
+      // end: identifierNode.getEnd(),
+      // Use getWidth() to get the length of the node's text only, excluding trailing whitespace.
+      end: identifierNode.getStart() + identifierNode.getWidth(sourceFile),
+    };
+
     // Display constructor information for classes being instantiated
     // Don't display constructor information for classes being extended, imported, or part of an import statement
     if (
@@ -75,6 +105,9 @@ export function getTypeInfoAtPosition(
         typeTree: getConstructorTypeInfo(type, typeChecker, name),
         declaration,
         name,
+        span,
+        syntaxKind,
+        returnTypeString,
       };
     }
 
@@ -97,6 +130,9 @@ export function getTypeInfoAtPosition(
       typeTree,
       declaration,
       name,
+      span,
+      syntaxKind,
+      returnTypeString,
     };
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (_e) {
@@ -260,7 +296,7 @@ function getTypeTree(type: ts.Type, depth: number, visited: Set<ts.Type>): TypeT
         const parameters = signature.parameters.map((symbol) => {
           const declaration = symbol.declarations?.[0];
           const isRestParameter = Boolean(
-            declaration && typescript.isParameter(declaration) && !!declaration.dotDotDotToken,
+            declaration && typescript.isParameter(declaration) && !!declaration.dotDotDotToken
           );
           const optional = Boolean(declaration && typescript.isParameter(declaration) && !!declaration.questionToken);
 
@@ -398,7 +434,7 @@ function getTypeTree(type: ts.Type, depth: number, visited: Set<ts.Type>): TypeT
       const indexType = checker.typeToString(
         indexSignature.keyType,
         undefined,
-        typescript.TypeFormatFlags.NoTruncation,
+        typescript.TypeFormatFlags.NoTruncation
       );
 
       properties.push({
@@ -459,7 +495,7 @@ function isPrimitiveType(type: ts.Type): boolean {
       typeFlags & typescript.TypeFlags.UniqueESSymbol ||
       typeFlags & typescript.TypeFlags.Never ||
       typeFlags & typescript.TypeFlags.Unknown ||
-      typeFlags & typescript.TypeFlags.Any,
+      typeFlags & typescript.TypeFlags.Any
   );
 }
 
@@ -594,7 +630,7 @@ function isOptional(symbol: ts.Symbol | undefined): boolean {
   return declarations.some(
     (declaration) =>
       (typescript.isPropertySignature(declaration) || typescript.isPropertyDeclaration(declaration)) &&
-      !!declaration.questionToken,
+      !!declaration.questionToken
   );
 }
 

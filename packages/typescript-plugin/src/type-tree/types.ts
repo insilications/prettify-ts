@@ -1,3 +1,5 @@
+import type * as ts from "typescript";
+
 /**
  * Type Tree Object Properties
  */
@@ -43,8 +45,8 @@ export type TypeTree = { typeName: string } & (
   | { kind: "generic"; arguments: TypeTree[] }
   | { kind: "enum"; member: string }
   | { kind: "primitive" } // string, number, boolean, symbol, bigint, undefined, null, void, never, any
-  | { kind: "reference" } // Named types like classes, interfaces, type aliases, etc. when maxDepth is reached
-);
+  | { kind: "reference" }
+); // Named types like classes, interfaces, type aliases, etc. when maxDepth is reached
 
 /**
  * TypeInfo contains the type information of a TypeScript node.
@@ -53,4 +55,10 @@ export type TypeInfo = {
   typeTree: TypeTree;
   declaration: string;
   name: string;
+  span: {
+    start: number; // Character offset from the start of the file
+    end: number; // Character offset from the start of the file
+  };
+  syntaxKind: ts.SyntaxKind;
+  returnTypeString?: string;
 };
